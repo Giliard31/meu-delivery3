@@ -16,10 +16,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Estado local do Carrinho de Compras
 let carrinho = [];
 
-// Service Worker PWA
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js')
     .then(() => console.log('Service Worker registrado com sucesso!'));
@@ -30,7 +28,6 @@ window.addEventListener('DOMContentLoaded', () => {
   atualizarCarrinhoUI();
 });
 
-// Lógica PWA Prompt
 let deferredPrompt;
 const installBanner = document.getElementById('pwa-install-banner');
 const installButton = document.getElementById('btn-install');
@@ -52,7 +49,7 @@ installButton.addEventListener('click', async () => {
 });
 
 // ==========================================
-// 🛒 LÓGICA DO CARRINHO E INTERAÇÃO DO CLIENTE
+// 🛒 CARRINHO E PEDIDOS
 // ==========================================
 
 window.adicionarAoCarrinho = function(id, nome, preco, storeId) {
@@ -121,7 +118,6 @@ window.finalizarPedido = async function() {
     return;
   }
 
-  // Verificar se o cliente preencheu o perfil/endereço
   try {
     const userDocRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userDocRef);
@@ -134,7 +130,6 @@ window.finalizarPedido = async function() {
 
     const dadosCliente = userSnap.data();
 
-    // Salvar o pedido no Firestore
     await addDoc(collection(db, "orders"), {
       clientId: user.uid,
       clientName: dadosCliente.nome || user.email,
@@ -148,8 +143,8 @@ window.finalizarPedido = async function() {
     alert("Pedido finalizado com sucesso! Enviado para a loja.");
     carrinho = [];
     atualizarCarrinhoUI();
+    carregarHistoricoCliente(user.uid);
 
-    // Solicitar avaliação da loja após o pedido concluído
     setTimeout(() => {
       let nota = prompt("Deseja avaliar a loja de 1 a 5 estrelas?");
       if (nota) {
@@ -161,6 +156,39 @@ window.finalizarPedido = async function() {
     alert("Erro ao finalizar pedido: " + error.message);
   }
 };
+
+async function carregarHistoricoCliente(userId) {
+  const section = document.getElementById('client-orders-section');
+  const container = document.getElementById('client-orders-list');
+  if (!section || !container) return;
+
+  section.style.display = 'block';
+  container.innerHTML = "Carregando seus pedidos...";
+
+  try {
+    const q = query(collection(db, "orders"), where("clientId", "==", userId));
+    const querySnapshot = await getDocs(q);
+    container.innerHTML = "";
+    let count = 0;
+
+    querySnapshot.forEach((docSnap) => {
+      const order = docSnap.data();
+      count++;
+      let itensHtml = order.items.map(i => `${i.qtd}x ${i.nome}`).join(', ');
+
+      container.innerHTML += `
+        <div style="background:#f9f9f9; border:1px solid #eee; padding:10px; margin-bottom:8px; border-radius:6px; font-size:0.9rem;">
+          <p><strong>Itens:</strong> ${itensHtml}</p>
+          <p><strong>Status:</strong> <span style="font-weight:bold; color:#ff4757;">${order.status.toUpperCase()}</span></p>
+        </div>
+      `;
+    });
+
+    if (count === 0) container.innerHTML = "<p>Você ainda não fez nenhum pedido.</p>";
+  } catch (e) {
+    container.innerHTML = "Erro ao carregar histórico.";
+  }
+}
 
 // ==========================================
 // 👤 PERFIL E ENDEREÇO DO CLIENTE
@@ -205,7 +233,6 @@ window.salvarPerfilCliente = async function() {
   }
 
   try {
-    // Mantém a role anterior (se for admin ou loja) ou define como cliente
     const userDocRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userDocRef);
     let roleAtual = "client";
@@ -276,6 +303,7 @@ window.realizarLogin = async function() {
 window.fazerLogout = function() {
   signOut(auth).then(() => {
     alert("Você saiu da conta.");
+    document.getElementById('client-orders-section').style.display = 'none';
   });
 };
 
@@ -290,6 +318,8 @@ onAuthStateChanged(auth, async (user) => {
     btnLoginOpen.style.display = 'none';
     userInfo.style.display = 'block';
     userName.innerText = user.email;
+
+    carregarHistoricoCliente(user.uid);
 
     try {
       const userDocRef = doc(db, "users", user.uid);
@@ -313,11 +343,12 @@ onAuthStateChanged(auth, async (user) => {
     userInfo.style.display = 'none';
     adminPanel.style.display = 'none';
     storePanel.style.display = 'none';
+    document.getElementById('client-orders-section').style.display = 'none';
   }
 });
 
 // ==========================================
-// 🏪 LOJAS E VITRINE GERAL
+// 🏪 LOJAS E PRODUTOS
 // ==========================================
 
 async function verificarStatusLoja(userId) {
@@ -348,6 +379,7 @@ async function verificarStatusLoja(userId) {
         document.getElementById('store-exclusive-link').value = linkExclusivo;
 
         carregarProdutosDaLoja(userId);
+        carregarPedidosDaLoja(userId);
       } else {
         pendBox.style.display = 'block';
         pendBox.innerHTML = "<p style='color:red;'>Sua loja foi recusada ou bloqueada.</p>";
@@ -443,6 +475,57 @@ async function carregarProdutosDaLoja(storeId) {
     container.innerHTML = "Erro ao carregar produtos.";
   }
 }
+
+async function carregarPedidosDaLoja(storeId) {
+  const container = document.getElementById('store-orders-list');
+  if (!container) return;
+  container.innerHTML = "Carregando pedidos...";
+
+  try {
+    const q = query(collection(db, "orders"));
+    const querySnapshot = await getDocs(q);
+    container.innerHTML = "";
+    let count = 0;
+
+    querySnapshot.forEach((docSnap) => {
+      const order = docSnap.data();
+      const orderId = docSnap.id;
+
+      const itensDaLoja = order.items ? order.items.filter(item => item.storeId === storeId) : [];
+      if (itensDaLoja.length === 0) return;
+
+      count++;
+      let itensHtml = itensDaLoja.map(i => `${i.qtd}x ${i.nome} (R$ ${(i.preco * i.qtd).toFixed(2)})`).join('<br>');
+
+      container.innerHTML += `
+        <div style="background:#fdfdfd; border:1px solid #ddd; padding:12px; margin-bottom:10px; border-radius:8px;">
+          <p><strong>Cliente:</strong> ${order.clientName} (${order.clientPhone})</p>
+          <p><strong>Endereço:</strong> ${order.clientAddress}</p>
+          <p><strong>Itens:</strong><br>${itensHtml}</p>
+          <p><strong>Status atual:</strong> <span style="color: ${order.status === 'entregue' ? 'green' : 'orange'}; font-weight:bold;">${order.status.toUpperCase()}</span></p>
+          <div style="margin-top:8px;">
+            <button onclick="atualizarStatusPedido('${orderId}', 'preparando')" style="background:#f39c12; color:white; border:none; padding:5px 8px; border-radius:4px; cursor:pointer; margin-right:5px;">Preparando</button>
+            <button onclick="atualizarStatusPedido('${orderId}', 'entregue')" style="background:#2ecc71; color:white; border:none; padding:5px 8px; border-radius:4px; cursor:pointer;">Entregue</button>
+          </div>
+        </div>
+      `;
+    });
+
+    if (count === 0) container.innerHTML = "<p>Nenhum pedido recebido ainda.</p>";
+  } catch (e) {
+    container.innerHTML = "Erro ao carregar pedidos.";
+  }
+}
+
+window.atualizarStatusPedido = async function(orderId, novoStatus) {
+  try {
+    await updateDoc(doc(db, "orders", orderId), { status: novoStatus });
+    alert("Status do pedido atualizado!");
+    if (auth.currentUser) carregarPedidosDaLoja(auth.currentUser.uid);
+  } catch (e) {
+    alert("Erro ao atualizar status.");
+  }
+};
 
 window.alternarOcultarProduto = async function(prodId, estadoAtual) {
   try {
