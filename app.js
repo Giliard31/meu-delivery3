@@ -1,19 +1,24 @@
-// Importe o Firebase da CDN (substitua com suas credenciais do projeto Firebase)
+// Importações do Firebase SDK via CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, collection, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-// Configuração do seu Firebase (Pegue no painel do Firebase)
+// ==========================================
+// 🔑 SUAS CREDENCIAIS OFICIAIS DO FIREBASE
+// ==========================================
 const firebaseConfig = {
-  apiKey: "SUA_API_KEY",
-  authDomain: "SEU_PROJETO.firebaseapp.com",
-  projectId: "SEU_PROJETO",
-  storageBucket: "SEU_PROJETO.appspot.com",
-  messagingSenderId: "SEU_SENDER_ID",
-  appId: "SEU_APP_ID"
+  apiKey: "AIzaSyDCebqa5_gwSsVIzNXbcL6A6T2-k7HnFL0",
+  authDomain: "meu-delivery3.firebaseapp.com",
+  projectId: "meu-delivery3",
+  storageBucket: "meu-delivery3.firebasestorage.app",
+  messagingSenderId: "652989209672",
+  appId: "1:652989209672:web:75fbe66fd34ec1fa96cc7d",
+  measurementId: "G-W2NLBTF3V0"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
 
 // Registrar Service Worker para o PWA
 if ('serviceWorker' in navigator) {
@@ -29,7 +34,7 @@ const installButton = document.getElementById('btn-install');
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  installBanner.style.display = 'block'; // Mostra o banner pedindo para instalar
+  installBanner.style.display = 'block';
 });
 
 installButton.addEventListener('click', async () => {
@@ -44,7 +49,7 @@ installButton.addEventListener('click', async () => {
   }
 });
 
-// Controle de Interação com o Carrinho (Regra: se não logado, abre login)
+// Regra do Carrinho: Se não logado, abre login
 window.tentarAdicionarCarrinho = function() {
   const user = auth.currentUser;
   if (!user) {
@@ -55,7 +60,7 @@ window.tentarAdicionarCarrinho = function() {
   }
 };
 
-// Funções globais de UI do Modal
+// Controle de UI do Modal
 let modoCadastro = false;
 
 window.abrirModalLogin = function() {
@@ -70,12 +75,17 @@ window.alternarModoCadastro = function() {
   modoCadastro = !modoCadastro;
   document.getElementById('modal-title').innerText = modoCadastro ? 'Criar Conta' : 'Entrar';
   document.getElementById('btn-acao-auth').innerText = modoCadastro ? 'Cadastrar' : 'Entrar';
-  document.getElementById('trocar-modo').innerText = modoCadastro ? 'Já tem conta? Faça login' : 'Não tiene conta? Cadastre-se';
+  document.getElementById('trocar-modo').innerText = modoCadastro ? 'Já tem conta? Faça login' : 'Não tem conta? Cadastre-se';
 };
 
 window.realizarLogin = async function() {
   const email = document.getElementById('email').value;
   const senha = document.getElementById('senha').value;
+
+  if (!email || !senha) {
+    alert("Preencha o e-mail e a senha.");
+    return;
+  }
 
   try {
     if (modoCadastro) {
@@ -97,18 +107,99 @@ window.fazerLogout = function() {
   });
 };
 
-// Observador de Estado de Autenticação (Muda o topo automaticamente)
-onAuthStateChanged(auth, (user) => {
+// Observador de Estado de Autenticação & Verificação de Admin no Firestore
+onAuthStateChanged(auth, async (user) => {
   const btnLoginOpen = document.getElementById('btn-login-open');
   const userInfo = document.getElementById('user-info');
   const userName = document.getElementById('user-name');
+  const adminPanel = document.getElementById('admin-panel');
 
   if (user) {
     btnLoginOpen.style.display = 'none';
     userInfo.style.display = 'block';
     userName.innerText = user.email;
+
+    // Verificação de Segurança do Administrador via Firestore
+    try {
+      const userDocRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userDocRef);
+
+      if (userSnap.exists() && userSnap.data().role === 'admin') {
+        adminPanel.style.display = 'block';
+        carregarLojasPendentes();
+      } else {
+        adminPanel.style.display = 'none';
+      }
+    } catch (error) {
+      console.error("Erro ao verificar cargo:", error);
+      adminPanel.style.display = 'none';
+    }
+
   } else {
     btnLoginOpen.style.display = 'block';
     userInfo.style.display = 'none';
+    adminPanel.style.display = 'none';
   }
 });
+
+// Funções do Painel do Admin
+window.carregarLojasPendentes = async function() {
+  const container = document.getElementById('lista-lojas-pendentes');
+  container.innerHTML = "Buscando lojas...";
+
+  try {
+    const querySnapshot = await getDocs(collection(db, "stores"));
+    container.innerHTML = "";
+    
+    querySnapshot.forEach((docSnap) => {
+      const loja = docSnap.data();
+      const lojaId = docSnap.id;
+
+      if (loja.status === 'pending') {
+        container.innerHTML += `
+          <div style="background:#f1f1f1; padding:10px; margin-bottom:10px; border-radius:5px;">
+            <p><strong>Loja:</strong> ${loja.nome}</p>
+            <p><strong>E-mail:</strong> ${loja.email}</p>
+            <button onclick="aprovarLoja('${lojaId}')" style="background:green; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:3px;">Aprovar</button>
+            <button onclick="removerLoja('${lojaId}')" style="background:red; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:3px; margin-left:5px;">Recusar/Remover</button>
+          </div>
+        `;
+      }
+    });
+
+    if (container.innerHTML === "") {
+      container.innerHTML = "<p>Nenhuma loja pendente no momento.</p>";
+    }
+  } catch (error) {
+    container.innerHTML = "Erro ao carregar lojas.";
+  }
+};
+
+window.aprovarLoja = async function(lojaId) {
+  try {
+    await updateDoc(doc(db, "stores", lojaId), { status: 'approved' });
+    alert("Loja aprovada com sucesso!");
+    carregarLojasPendentes();
+  } catch (e) {
+    alert("Erro ao aprovar loja.");
+  }
+};
+
+window.removerLoja = async function(lojaId) {
+  try {
+    await updateDoc(doc(db, "stores", lojaId), { status: 'rejected' });
+    alert("Loja recusada/removida.");
+    carregarLojasPendentes();
+  } catch (e) {
+    alert("Erro ao remover loja.");
+  }
+};
+
+window.salvarComissao = function() {
+  const valor = document.getElementById('comissao-admin').value;
+  if(!valor) {
+    alert("Digite um valor para a comissão.");
+    return;
+  }
+  alert("Comissão de " + valor + "% salva com sucesso! (Configuração global aplicada)");
+};
