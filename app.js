@@ -1,11 +1,7 @@
-// Importações do Firebase SDK via CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-// ==========================================
-// 🔑 SUAS CREDENCIAIS OFICIAIS DO FIREBASE
-// ==========================================
 const firebaseConfig = {
   apiKey: "AIzaSyDCebqa5_gwSsVIzNXbcL6A6T2-k7HnFL0",
   authDomain: "meu-delivery3.firebaseapp.com",
@@ -20,18 +16,21 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Registrar Service Worker para o PWA
+// Estado local do Carrinho de Compras
+let carrinho = [];
+
+// Service Worker PWA
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js')
     .then(() => console.log('Service Worker registrado com sucesso!'));
 }
 
-// Carregar vitrine de produtos de todas as lojas aprovadas ao iniciar
 window.addEventListener('DOMContentLoaded', () => {
   carregarVitrineGeral();
+  atualizarCarrinhoUI();
 });
 
-// Lógica do Prompt de Instalação PWA
+// Lógica PWA Prompt
 let deferredPrompt;
 const installBanner = document.getElementById('pwa-install-banner');
 const installButton = document.getElementById('btn-install');
@@ -46,26 +45,194 @@ installButton.addEventListener('click', async () => {
   if (deferredPrompt) {
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      console.log('Usuário aceitou instalar o PWA');
-    }
+    if (outcome === 'accepted') console.log('PWA instalado');
     deferredPrompt = null;
     installBanner.style.display = 'none';
   }
 });
 
-// Regra do Carrinho: Se não logado, abre login
-window.tentarAdicionarCarrinho = function(nomeProd) {
+// ==========================================
+// 🛒 LÓGICA DO CARRINHO E INTERAÇÃO DO CLIENTE
+// ==========================================
+
+window.adicionarAoCarrinho = function(id, nome, preco, storeId) {
   const user = auth.currentUser;
   if (!user) {
     alert("Você precisa entrar na sua conta para adicionar itens ao carrinho!");
     window.abrirModalLogin();
+    return;
+  }
+
+  const precoNum = parseFloat(preco);
+  const itemExistente = carrinho.find(item => item.id === id);
+
+  if (itemExistente) {
+    itemExistente.qtd += 1;
   } else {
-    alert(`Produto "${nomeProd}" adicionado ao carrinho com sucesso!`);
+    carrinho.push({ id, nome, preco: precoNum, qtd: 1, storeId });
+  }
+
+  atualizarCarrinhoUI();
+  alert(`"${nome}" adicionado ao carrinho!`);
+};
+
+function atualizarCarrinhoUI() {
+  const container = document.getElementById('carrinho-itens');
+  const totalContainer = document.getElementById('carrinho-total');
+
+  if (carrinho.length === 0) {
+    container.innerHTML = "<p>Seu carrinho está vazio.</p>";
+    totalContainer.innerText = "Total: R$ 0,00";
+    return;
+  }
+
+  container.innerHTML = "";
+  let total = 0;
+
+  carrinho.forEach((item, index) => {
+    let subtotal = item.preco * item.qtd;
+    total += subtotal;
+    container.innerHTML += `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; border-bottom:1px solid #eee; padding-bottom:5px;">
+        <span>${item.nome} (${item.qtd}x) - R$ ${subtotal.toFixed(2)}</span>
+        <button onclick="removerDoCarrinho(${index})" style="background:red; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">X</button>
+      </div>
+    `;
+  });
+
+  totalContainer.innerText = `Total: R$ ${total.toFixed(2)}`;
+}
+
+window.removerDoCarrinho = function(index) {
+  carrinho.splice(index, 1);
+  atualizarCarrinhoUI();
+};
+
+window.finalizarPedido = async function() {
+  const user = auth.currentUser;
+  if (!user) {
+    alert("Faça login para finalizar o pedido.");
+    window.abrirModalLogin();
+    return;
+  }
+
+  if (carrinho.length === 0) {
+    alert("Seu carrinho está vazio!");
+    return;
+  }
+
+  // Verificar se o cliente preencheu o perfil/endereço
+  try {
+    const userDocRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userDocRef);
+
+    if (!userSnap.exists() || !userSnap.data().rua || !userSnap.data().telefone) {
+      alert("Por favor, preencha seus dados de endereço e telefone no seu Perfil antes de finalizar o pedido!");
+      window.abrirPerfilCliente();
+      return;
+    }
+
+    const dadosCliente = userSnap.data();
+
+    // Salvar o pedido no Firestore
+    await addDoc(collection(db, "orders"), {
+      clientId: user.uid,
+      clientName: dadosCliente.nome || user.email,
+      clientPhone: dadosCliente.telefone,
+      clientAddress: `${dadosCliente.rua}, ${dadosCliente.bairro}`,
+      items: carrinho,
+      status: 'pendente',
+      criadoEm: new Date().toISOString()
+    });
+
+    alert("Pedido finalizado com sucesso! Enviado para a loja.");
+    carrinho = [];
+    atualizarCarrinhoUI();
+
+    // Solicitar avaliação da loja após o pedido concluído
+    setTimeout(() => {
+      let nota = prompt("Deseja avaliar a loja de 1 a 5 estrelas?");
+      if (nota) {
+        alert("Obrigado pela sua avaliação!");
+      }
+    }, 1000);
+
+  } catch (error) {
+    alert("Erro ao finalizar pedido: " + error.message);
   }
 };
 
-// Controle de UI do Modal
+// ==========================================
+// 👤 PERFIL E ENDEREÇO DO CLIENTE
+// ==========================================
+
+window.abrirPerfilCliente = async function() {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  try {
+    const userDocRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userDocRef);
+
+    if (userSnap.exists()) {
+      const data = userSnap.data();
+      document.getElementById('cli-nome').value = data.nome || '';
+      document.getElementById('cli-tel').value = data.telefone || '';
+      document.getElementById('cli-bairro').value = data.bairro || '';
+      document.getElementById('cli-rua').value = data.rua || '';
+    }
+  } catch (e) {
+    console.error("Erro ao carregar perfil", e);
+  }
+
+  document.getElementById('profile-modal').style.display = 'flex';
+};
+
+window.fecharPerfilCliente = function() {
+  document.getElementById('profile-modal').style.display = 'none';
+};
+
+window.salvarPerfilCliente = async function() {
+  const user = auth.currentUser;
+  const nome = document.getElementById('cli-nome').value;
+  const telefone = document.getElementById('cli-tel').value;
+  const bairro = document.getElementById('cli-bairro').value;
+  const rua = document.getElementById('cli-rua').value;
+
+  if (!nome || !telefone || !bairro || !rua) {
+    alert("Preencha todos os campos do endereço e telefone.");
+    return;
+  }
+
+  try {
+    // Mantém a role anterior (se for admin ou loja) ou define como cliente
+    const userDocRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userDocRef);
+    let roleAtual = "client";
+    if (userSnap.exists() && userSnap.data().role) {
+      roleAtual = userSnap.data().role;
+    }
+
+    await setDoc(userDocRef, {
+      email: user.email,
+      role: roleAtual,
+      nome,
+      telefone,
+      bairro,
+      rua
+    }, { merge: true });
+
+    alert("Dados de perfil salvos com sucesso!");
+    window.fecharPerfilCliente();
+  } catch (error) {
+    alert("Erro ao salvar perfil: " + error.message);
+  }
+};
+
+// ==========================================
+// 🔐 AUTENTICAÇÃO E MODAIS
+// ==========================================
+
 let modoCadastro = false;
 
 window.abrirModalLogin = function() {
@@ -95,7 +262,7 @@ window.realizarLogin = async function() {
   try {
     if (modoCadastro) {
       await createUserWithEmailAndPassword(auth, email, senha);
-      alert("Conta criada com sucesso!");
+      alert("Conta criada com sucesso! Complete seus dados no menu 'Meu Perfil'.");
     } else {
       await signInWithEmailAndPassword(auth, email, senha);
       alert("Login realizado com sucesso!");
@@ -112,7 +279,6 @@ window.fazerLogout = function() {
   });
 };
 
-// Observador de Estado de Autenticação (Admin & Lojas)
 onAuthStateChanged(auth, async (user) => {
   const btnLoginOpen = document.getElementById('btn-login-open');
   const userInfo = document.getElementById('user-info');
@@ -125,7 +291,6 @@ onAuthStateChanged(auth, async (user) => {
     userInfo.style.display = 'block';
     userName.innerText = user.email;
 
-    // Verificar se é Admin ou Loja
     try {
       const userDocRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userDocRef);
@@ -137,12 +302,10 @@ onAuthStateChanged(auth, async (user) => {
         adminPanel.style.display = 'none';
       }
 
-      // Exibir painel da loja para qualquer usuário logado gerenciar seu negócio
       storePanel.style.display = 'block';
       verificarStatusLoja(user.uid);
-
-    } catch (error) {
-      console.error("Erro ao carregar permissões:", error);
+    } catch (e) {
+      console.error(e);
     }
 
   } else {
@@ -154,7 +317,7 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 // ==========================================
-// 🏪 FUNÇÕES DA LOJA E PRODUTOS
+// 🏪 LOJAS E VITRINE GERAL
 // ==========================================
 
 async function verificarStatusLoja(userId) {
@@ -181,19 +344,18 @@ async function verificarStatusLoja(userId) {
         pendBox.style.display = 'none';
         apprBox.style.display = 'block';
 
-        // Definir link exclusivo da loja
         const linkExclusivo = `${window.location.origin}/?loja=${userId}`;
         document.getElementById('store-exclusive-link').value = linkExclusivo;
 
         carregarProdutosDaLoja(userId);
       } else {
         pendBox.style.display = 'block';
-        pendBox.innerHTML = "<p style='color:red;'>Sua loja foi recusada ou bloqueada pelo administrador.</p>";
+        pendBox.innerHTML = "<p style='color:red;'>Sua loja foi recusada ou bloqueada.</p>";
         apprBox.style.display = 'none';
       }
     }
   } catch (error) {
-    console.error("Erro ao verificar loja:", error);
+    console.error(error);
   }
 }
 
@@ -209,16 +371,12 @@ window.cadastrarLoja = async function() {
 
   try {
     await setDoc(doc(db, "stores", user.uid), {
-      nome: nome,
-      telefone: telefone,
-      email: user.email,
-      status: 'pending',
-      criadoEm: new Date().toISOString()
+      nome, telefone, email: user.email, status: 'pending', criadoEm: new Date().toISOString()
     });
-    alert("Solicitação enviada com sucesso! Aguarde a aprovação do Administrador.");
+    alert("Solicitação enviada! Aguarde a aprovação do Administrador.");
     verificarStatusLoja(user.uid);
   } catch (error) {
-    alert("Erro ao cadastrar loja: " + error.message);
+    alert("Erro: " + error.message);
   }
 };
 
@@ -226,7 +384,7 @@ window.copiarLinkLoja = function() {
   const linkInput = document.getElementById('store-exclusive-link');
   linkInput.select();
   navigator.clipboard.writeText(linkInput.value);
-  alert("Link exclusivo copiado com sucesso!");
+  alert("Link copiado com sucesso!");
 };
 
 window.adicionarProduto = async function() {
@@ -236,34 +394,29 @@ window.adicionarProduto = async function() {
   const imagem = document.getElementById('prod-img').value;
 
   if (!nome || !preco || !imagem) {
-    alert("Preencha todos os campos do produto (incluindo o link da foto).");
+    alert("Preencha todos os campos do produto.");
     return;
   }
 
   try {
     await addDoc(collection(db, "products"), {
-      storeId: user.uid,
-      nome: nome,
-      preco: preco,
-      imagem: imagem,
-      oculto: false,
-      criadoEm: new Date().toISOString()
+      storeId: user.uid, nome, preco, imagem, oculto: false, criadoEm: new Date().toISOString()
     });
 
-    alert("Produto publicado com sucesso!");
+    alert("Produto publicado!");
     document.getElementById('prod-name').value = '';
     document.getElementById('prod-price').value = '';
     document.getElementById('prod-img').value = '';
     carregarProdutosDaLoja(user.uid);
     carregarVitrineGeral();
   } catch (error) {
-    alert("Erro ao publicar produto: " + error.message);
+    alert("Erro: " + error.message);
   }
 };
 
 async function carregarProdutosDaLoja(storeId) {
   const container = document.getElementById('store-products-list');
-  container.innerHTML = "Carregando seus produtos...";
+  container.innerHTML = "Carregando...";
 
   try {
     const q = query(collection(db, "products"), where("storeId", "==", storeId));
@@ -276,9 +429,7 @@ async function carregarProdutosDaLoja(storeId) {
 
       container.innerHTML += `
         <div style="background:#f1f1f1; padding:10px; margin-bottom:10px; border-radius:5px; display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <strong>${prod.nome}</strong> - R$ ${prod.preco} ${prod.oculto ? '<span style="color:orange;">(Oculto)</span>' : ''}
-          </div>
+          <div><strong>${prod.nome}</strong> - R$ ${prod.preco} ${prod.oculto ? '<span style="color:orange;">(Oculto)</span>' : ''}</div>
           <div>
             <button onclick="alternarOcultarProduto('${prodId}', ${prod.oculto})" style="background:${prod.oculto ? 'green' : 'orange'}; color:white; border:none; padding:5px; cursor:pointer; border-radius:3px;">${prod.oculto ? 'Exibir' : 'Ocultar'}</button>
             <button onclick="excluirProduto('${prodId}')" style="background:red; color:white; border:none; padding:5px; cursor:pointer; border-radius:3px; margin-left:5px;">Excluir</button>
@@ -287,10 +438,8 @@ async function carregarProdutosDaLoja(storeId) {
       `;
     });
 
-    if (container.innerHTML === "") {
-      container.innerHTML = "<p>Nenhum produto cadastrado ainda.</p>";
-    }
-  } catch (error) {
+    if (container.innerHTML === "") container.innerHTML = "<p>Nenhum produto cadastrado.</p>";
+  } catch (e) {
     container.innerHTML = "Erro ao carregar produtos.";
   }
 }
@@ -298,135 +447,97 @@ async function carregarProdutosDaLoja(storeId) {
 window.alternarOcultarProduto = async function(prodId, estadoAtual) {
   try {
     await updateDoc(doc(db, "products", prodId), { oculto: !estadoAtual });
-    const user = auth.currentUser;
-    carregarProdutosDaLoja(user.uid);
+    carregarProdutosDaLoja(auth.currentUser.uid);
     carregarVitrineGeral();
-  } catch (e) {
-    alert("Erro ao alterar visibilidade do produto.");
-  }
+  } catch (e) { alert("Erro."); }
 };
 
 window.excluirProduto = async function(prodId) {
-  if (confirm("Tem certeza que deseja excluir este produto?")) {
+  if (confirm("Excluir este produto?")) {
     try {
       await deleteDoc(doc(db, "products", prodId));
-      alert("Produto excluído!");
-      const user = auth.currentUser;
-      carregarProdutosDaLoja(user.uid);
+      alert("Excluído!");
+      carregarProdutosDaLoja(auth.currentUser.uid);
       carregarVitrineGeral();
-    } catch (e) {
-      alert("Erro ao excluir produto.");
-    }
+    } catch (e) { alert("Erro."); }
   }
 };
 
-// ==========================================
-// 🌐 VITRINE GERAL (Para Clientes e Visitantes)
-// ==========================================
-
 async function carregarVitrineGeral() {
   const container = document.getElementById('produtos-container');
-  container.innerHTML = "Carregando produtos...";
+  container.innerHTML = "Carregando vitrine...";
 
-  // Verificar se a URL tem parâmetro de link exclusivo de loja (ex: ?loja=ID)
   const urlParams = new URLSearchParams(window.location.search);
   const lojaParam = urlParams.get('loja');
 
   try {
     const querySnapshot = await getDocs(collection(db, "products"));
     container.innerHTML = "";
-
-    let produtosEncontrados = 0;
+    let count = 0;
 
     querySnapshot.forEach((docSnap) => {
       const prod = docSnap.data();
+      const prodId = docSnap.id;
 
-      // Se o produto está oculto, não exibe na vitrine pública
       if (prod.oculto) return;
-
-      // Se o cliente acessou por um link exclusivo de loja, filtra apenas os produtos daquela loja
       if (lojaParam && prod.storeId !== lojaParam) return;
 
-      produtosEncontrados++;
+      count++;
       container.innerHTML += `
         <div class="produto-card">
           <img src="${prod.imagem}" alt="${prod.nome}" onerror="this.src='https://via.placeholder.com/150'">
           <h3>${prod.nome}</h3>
           <p>R$ ${prod.preco}</p>
-          <button onclick="tentarAdicionarCarrinho('${prod.nome}')">Adicionar ao Carrinho</button>
+          <button onclick="adicionarAoCarrinho('${prodId}', '${prod.nome}', '${prod.preco}', '${prod.storeId}')">Adicionar ao Carrinho</button>
         </div>
       `;
     });
 
-    if (produtosEncontrados === 0) {
-      container.innerHTML = "<p>Nenhum produto disponível no momento.</p>";
-    }
-  } catch (error) {
-    container.innerHTML = "Erro ao carregar a vitrine.";
+    if (count === 0) container.innerHTML = "<p>Nenhum produto disponível.</p>";
+  } catch (e) {
+    container.innerHTML = "Erro ao carregar vitrine.";
   }
 }
 
-// ==========================================
-// 🛠️ FUNÇÕES DO ADMIN (Já existentes)
-// ==========================================
-
+// Admin
 window.carregarLojasPendentes = async function() {
   const container = document.getElementById('lista-lojas-pendentes');
-  container.innerHTML = "Buscando lojas...";
-
+  container.innerHTML = "Carregando...";
   try {
     const querySnapshot = await getDocs(collection(db, "stores"));
     container.innerHTML = "";
-    
     querySnapshot.forEach((docSnap) => {
       const loja = docSnap.data();
       const lojaId = docSnap.id;
-
       if (loja.status === 'pending') {
         container.innerHTML += `
           <div style="background:#f1f1f1; padding:10px; margin-bottom:10px; border-radius:5px;">
             <p><strong>Loja:</strong> ${loja.nome}</p>
             <p><strong>E-mail:</strong> ${loja.email}</p>
-            <button onclick="aprovarLoja('${lojaId}')" style="background:green; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:3px;">Aprovar</button>
-            <button onclick="removerLoja('${lojaId}')" style="background:red; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:3px; margin-left:5px;">Recusar/Remover</button>
+            <button onclick="aprovarLoja('${lojaId}')" style="background:green; color:white; border:none; padding:5px 10px; cursor:pointer;">Aprovar</button>
+            <button onclick="removerLoja('${lojaId}')" style="background:red; color:white; border:none; padding:5px 10px; cursor:pointer; margin-left:5px;">Recusar</button>
           </div>
         `;
       }
     });
-
-    if (container.innerHTML === "") {
-      container.innerHTML = "<p>Nenhuma loja pendente no momento.</p>";
-    }
-  } catch (error) {
-    container.innerHTML = "Erro ao carregar lojas.";
-  }
+    if (container.innerHTML === "") container.innerHTML = "<p>Nenhuma loja pendente.</p>";
+  } catch (e) { container.innerHTML = "Erro."; }
 };
 
 window.aprovarLoja = async function(lojaId) {
-  try {
-    await updateDoc(doc(db, "stores", lojaId), { status: 'approved' });
-    alert("Loja aprovada com sucesso!");
-    carregarLojasPendentes();
-  } catch (e) {
-    alert("Erro ao aprovar loja.");
-  }
+  await updateDoc(doc(db, "stores", lojaId), { status: 'approved' });
+  alert("Loja aprovada!");
+  carregarLojasPendentes();
 };
 
 window.removerLoja = async function(lojaId) {
-  try {
-    await updateDoc(doc(db, "stores", lojaId), { status: 'rejected' });
-    alert("Loja recusada/removida.");
-    carregarLojasPendentes();
-  } catch (e) {
-    alert("Erro ao remover loja.");
-  }
+  await updateDoc(doc(db, "stores", lojaId), { status: 'rejected' });
+  alert("Loja recusada.");
+  carregarLojasPendentes();
 };
 
 window.salvarComissao = function() {
   const valor = document.getElementById('comissao-admin').value;
-  if(!valor) {
-    alert("Digite um valor para a comissão.");
-    return;
-  }
-  alert("Comissão de " + valor + "% salva com sucesso! (Configuração global aplicada)");
+  if(!valor) return alert("Digite o valor.");
+  alert("Comissão de " + valor + "% salva!");
 };
