@@ -16,7 +16,8 @@
       <button id="btn-login-open" onclick="abrirModalLogin()">Entrar</button>
       <div id="user-info" style="display:none;">
         <span id="user-name"></span>
-        <button onclick="fazerLogout()">Sair</button>
+        <button onclick="abrirPerfilCliente()" style="background:#0066cc; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer; margin-left:5px;">Meu Perfil</button>
+        <button onclick="fazerLogout()" style="background:#444; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer; margin-left:5px;">Sair</button>
       </div>
     </div>
   </header>
@@ -29,7 +30,7 @@
 
   <!-- Conteúdo Principal -->
   <main>
-    <!-- PAINEL DO ADMINISTRADOR (Oculto para não-admins) -->
+    <!-- PAINEL DO ADMINISTRADOR -->
     <section id="admin-panel" style="display:none; background:#fff; padding:20px; margin-bottom:20px; border: 2px solid #ff4757; border-radius:8px;">
       <h2>🛠️ Painel do Administrador</h2>
       <p>Bem-vindo, Chefe! Aqui você gerencia o ecossistema.</p>
@@ -44,11 +45,10 @@
       <button onclick="salvarComissao()" style="background:#222; color:white; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; margin-top:5px;">Salvar Comissão</button>
     </section>
 
-    <!-- PAINEL DA LOJA / VENDEDOR (Oculto se não for lojista) -->
+    <!-- PAINEL DA LOJA / VENDEDOR -->
     <section id="store-panel" style="display:none; background:#fff; padding:20px; margin-bottom:20px; border: 2px solid #2ecc71; border-radius:8px;">
       <h2>🏪 Painel da sua Loja</h2>
       
-      <!-- Se a loja ainda não existe -->
       <div id="store-registration-box" style="display:none;">
         <p>Você ainda não tem uma loja cadastrada. Preencha abaixo para enviar ao Administrador:</p>
         <input type="text" id="store-name-input" placeholder="Nome da Loja"><br>
@@ -56,12 +56,10 @@
         <button onclick="cadastrarLoja()" style="background:#2ecc71; color:white; border:none; padding:10px; border-radius:4px; cursor:pointer; margin-top:10px; width:100%;">Solicitar Cadastro da Loja</button>
       </div>
 
-      <!-- Se a loja está aguardando aprovação -->
       <div id="store-pending-box" style="display:none;">
         <p style="color:orange; font-weight:bold;">⏳ Sua loja está aguardando aprovação do Administrador.</p>
       </div>
 
-      <!-- Se a loja foi aprovada -->
       <div id="store-approved-box" style="display:none;">
         <p style="color:green; font-weight:bold;">✅ Loja Aprovada e Ativa!</p>
         
@@ -72,7 +70,7 @@
         </div>
 
         <h3>📦 Cadastrar Novo Produto</h3>
-        <input type="text" id="prod-name" placeholder="Nome do Produto (Ex: Pizza Margherita)"><br>
+        <input type="text" id="prod-name" placeholder="Nome do Produto"><br>
         <input type="text" id="prod-price" placeholder="Preço (Ex: 45.00)"><br>
         <input type="text" id="prod-img" placeholder="Link da Foto (URL)"><br>
         <button onclick="adicionarProduto()" style="background:#2ecc71; color:white; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; margin-top:5px;">Publicar Produto</button>
@@ -84,14 +82,24 @@
       </div>
     </section>
 
-    <!-- Vitrine Aberta (Visível para todos sem login) -->
+    <!-- CARRINHO DE COMPRAS FLUTUANTE / FIXO -->
+    <section id="carrinho-section" style="background:#fff; padding:15px; margin-bottom:20px; border:1px solid #ddd; border-radius:8px;">
+      <h3>🛒 Seu Carrinho</h3>
+      <div id="carrinho-itens">
+        <p>Seu carrinho está vazio.</p>
+      </div>
+      <div id="carrinho-total" style="font-weight:bold; margin-top:10px;">Total: R$ 0,00</div>
+      <button onclick="finalizarPedido()" style="background:#ff4757; color:white; border:none; padding:10px; width:100%; border-radius:5px; margin-top:10px; cursor:pointer; font-weight:bold;">Finalizar Pedido</button>
+    </section>
+
+    <!-- Vitrine Aberta -->
     <h2>🍔 Vitrine de Produtos</h2>
     <div id="produtos-container">
-      <p>Carregando produtos de todas as lojas...</p>
+      <p>Carregando produtos...</p>
     </div>
   </main>
 
-  <!-- Modal de Login / Cadastro -->
+  <!-- Modal de Login / Cadastro de Conta -->
   <div id="auth-modal" class="modal" style="display:none;">
     <div class="modal-content">
       <span onclick="fecharModalLogin()" style="float:right; cursor:pointer; font-size:20px; font-weight:bold;">&times;</span>
@@ -105,7 +113,23 @@
     </div>
   </div>
 
-  <!-- Scripts do Firebase SDK (Modular) -->
+  <!-- Modal de Perfil e Endereço do Cliente -->
+  <div id="profile-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <span onclick="fecharPerfilCliente()" style="float:right; cursor:pointer; font-size:20px; font-weight:bold;">&times;</span>
+      <h2>👤 Meu Perfil e Endereço</h2>
+      <p style="font-size:0.85rem; color:#666;">Preencha seus dados para entrega:</p>
+      
+      <input type="text" id="cli-nome" placeholder="Seu Nome Completo"><br>
+      <input type="text" id="cli-tel" placeholder="Telefone / WhatsApp"><br>
+      <input type="text" id="cli-bairro" placeholder="Bairro"><br>
+      <input type="text" id="cli-rua" placeholder="Nome da Rua e Número"><br>
+      
+      <button onclick="salvarPerfilCliente()" style="width:100%; padding:10px; background:#2ecc71; color:white; border:none; border-radius:4px; cursor:pointer; margin-top:10px; font-weight:bold;">Salvar Dados</button>
+    </div>
+  </div>
+
+  <!-- Scripts do Firebase SDK -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
