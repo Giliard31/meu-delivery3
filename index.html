@@ -29,7 +29,7 @@
 
   <!-- Conteúdo Principal -->
   <main>
-    <!-- PAINEL DO ADMINISTRADOR (Oculto por padrão, só aparece para o Admin logado) -->
+    <!-- PAINEL DO ADMINISTRADOR (Oculto para não-admins) -->
     <section id="admin-panel" style="display:none; background:#fff; padding:20px; margin-bottom:20px; border: 2px solid #ff4757; border-radius:8px;">
       <h2>🛠️ Painel do Administrador</h2>
       <p>Bem-vindo, Chefe! Aqui você gerencia o ecossistema.</p>
@@ -44,16 +44,50 @@
       <button onclick="salvarComissao()" style="background:#222; color:white; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; margin-top:5px;">Salvar Comissão</button>
     </section>
 
-    <!-- Vitrine Aberta (Visível para todos sem login) -->
-    <h2>Produtos Disponíveis</h2>
-    <div id="produtos-container">
-      <!-- Exemplo de produto -->
-      <div class="produto-card">
-        <img src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500" alt="Burger">
-        <h3>X-Burguer Especial</h3>
-        <p>R$ 25,00</p>
-        <button onclick="tentarAdicionarCarrinho()">Adicionar ao Carrinho</button>
+    <!-- PAINEL DA LOJA / VENDEDOR (Oculto se não for lojista) -->
+    <section id="store-panel" style="display:none; background:#fff; padding:20px; margin-bottom:20px; border: 2px solid #2ecc71; border-radius:8px;">
+      <h2>🏪 Painel da sua Loja</h2>
+      
+      <!-- Se a loja ainda não existe -->
+      <div id="store-registration-box" style="display:none;">
+        <p>Você ainda não tem uma loja cadastrada. Preencha abaixo para enviar ao Administrador:</p>
+        <input type="text" id="store-name-input" placeholder="Nome da Loja"><br>
+        <input type="text" id="store-phone-input" placeholder="Telefone / WhatsApp"><br>
+        <button onclick="cadastrarLoja()" style="background:#2ecc71; color:white; border:none; padding:10px; border-radius:4px; cursor:pointer; margin-top:10px; width:100%;">Solicitar Cadastro da Loja</button>
       </div>
+
+      <!-- Se a loja está aguardando aprovação -->
+      <div id="store-pending-box" style="display:none;">
+        <p style="color:orange; font-weight:bold;">⏳ Sua loja está aguardando aprovação do Administrador.</p>
+      </div>
+
+      <!-- Se a loja foi aprovada -->
+      <div id="store-approved-box" style="display:none;">
+        <p style="color:green; font-weight:bold;">✅ Loja Aprovada e Ativa!</p>
+        
+        <div style="background:#f9f9f9; padding:10px; border-radius:5px; margin-bottom:15px;">
+          <strong>🔗 Link Exclusivo da sua Loja:</strong><br>
+          <input type="text" id="store-exclusive-link" readonly style="width:80%; padding:5px; margin-top:5px;">
+          <button onclick="copiarLinkLoja()" style="padding:5px 10px; cursor:pointer;">Copiar</button>
+        </div>
+
+        <h3>📦 Cadastrar Novo Produto</h3>
+        <input type="text" id="prod-name" placeholder="Nome do Produto (Ex: Pizza Margherita)"><br>
+        <input type="text" id="prod-price" placeholder="Preço (Ex: 45.00)"><br>
+        <input type="text" id="prod-img" placeholder="Link da Foto (URL)"><br>
+        <button onclick="adicionarProduto()" style="background:#2ecc71; color:white; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; margin-top:5px;">Publicar Produto</button>
+
+        <h3>📋 Seus Produtos Cadastrados</h3>
+        <div id="store-products-list">
+          <p>Carregando produtos...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vitrine Aberta (Visível para todos sem login) -->
+    <h2>🍔 Vitrine de Produtos</h2>
+    <div id="produtos-container">
+      <p>Carregando produtos de todas as lojas...</p>
     </div>
   </main>
 
