@@ -27,8 +27,24 @@
     <button id="btn-install" style="background:white; color:#ff4757; border:none; padding:5px 10px; margin-left:10px; border-radius:4px; font-weight:bold;">Instalar</button>
   </div>
 
-  <!-- Vitrine Aberta (Visível para todos sem login) -->
+  <!-- Conteúdo Principal -->
   <main>
+    <!-- PAINEL DO ADMINISTRADOR (Oculto por padrão, só aparece para o Admin logado) -->
+    <section id="admin-panel" style="display:none; background:#fff; padding:20px; margin-bottom:20px; border: 2px solid #ff4757; border-radius:8px;">
+      <h2>🛠️ Painel do Administrador</h2>
+      <p>Bem-vindo, Chefe! Aqui você gerencia o ecossistema.</p>
+      
+      <h3>Lojas Pendentes de Aprovação</h3>
+      <div id="lista-lojas-pendentes">
+        <p>Carregando lojas...</p>
+      </div>
+
+      <h3>Configurar Comissão Global</h3>
+      <input type="number" id="comissao-admin" placeholder="Ex: 10 (%)">
+      <button onclick="salvarComissao()" style="background:#222; color:white; border:none; padding:8px 12px; border-radius:4px; cursor:pointer; margin-top:5px;">Salvar Comissão</button>
+    </section>
+
+    <!-- Vitrine Aberta (Visível para todos sem login) -->
     <h2>Produtos Disponíveis</h2>
     <div id="produtos-container">
       <!-- Exemplo de produto -->
@@ -44,14 +60,14 @@
   <!-- Modal de Login / Cadastro -->
   <div id="auth-modal" class="modal" style="display:none;">
     <div class="modal-content">
-      <span onclick="fecharModalLogin()" style="float:right; cursor:pointer;">&times;</span>
+      <span onclick="fecharModalLogin()" style="float:right; cursor:pointer; font-size:20px; font-weight:bold;">&times;</span>
       <h2 id="modal-title">Entrar</h2>
       
       <input type="email" id="email" placeholder="E-mail"><br>
       <input type="password" id="senha" placeholder="Senha"><br>
       
-      <button id="btn-acao-auth" onclick="realizarLogin()">Entrar</button>
-      <p id="trocar-modo" onclick="alternarModoCadastro()">Não tem conta? Cadastre-se</p>
+      <button id="btn-acao-auth" onclick="realizarLogin()" style="width:100%; padding:10px; background:#ff4757; color:white; border:none; border-radius:4px; cursor:pointer; margin-top:10px;">Entrar</button>
+      <p id="trocar-modo" onclick="alternarModoCadastro()" style="color:#0066cc; cursor:pointer; text-align:center; margin-top:15px; font-size:0.9rem;">Não tem conta? Cadastre-se</p>
     </div>
   </div>
 
